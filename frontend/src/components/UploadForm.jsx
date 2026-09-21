@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import ThresholdForm from './ThresholdForm'
+import { DEFAULT_THRESHOLDS, sanitize } from '../timeline'
 
-export default function UploadForm({ onResult, onError }) {
+export default function UploadForm({ thresholds, onThresholdsChange, onResult, onError }) {
   const [srtFile, setSrtFile] = useState(null)
   const [scriptFile, setScriptFile] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -8,11 +10,13 @@ export default function UploadForm({ onResult, onError }) {
   async function submit(e) {
     e.preventDefault()
     if (!srtFile || !scriptFile || busy) return
+    const clean = sanitize(thresholds)
+    onThresholdsChange(clean)
     setBusy(true)
     onError(null)
     try {
       const { compareFiles } = await import('../api')
-      onResult(await compareFiles(srtFile, scriptFile))
+      onResult(await compareFiles(srtFile, scriptFile, clean))
     } catch (err) {
       onError(err.message)
     } finally {
@@ -22,11 +26,13 @@ export default function UploadForm({ onResult, onError }) {
 
   async function useSample() {
     if (busy) return
+    const clean = sanitize(thresholds)
+    onThresholdsChange(clean)
     setBusy(true)
     onError(null)
     try {
       const { loadSample } = await import('../api')
-      onResult(await loadSample())
+      onResult(await loadSample(clean))
     } catch (err) {
       onError(err.message)
     } finally {
@@ -40,7 +46,7 @@ export default function UploadForm({ onResult, onError }) {
         <h1>字幕核校工具</h1>
         <p className="hint">
           上传 SRT 字幕与校对稿，系统自动归一化标点与空白、跨字幕块做词序对齐，
-          识别缺词、多词、错序与错词，并生成带时间码的核校清单。
+          识别缺词、多词、错序与错词；同时按字幕块审计起止重叠、异常空隙与阅读速度（CPS）。
         </p>
 
         <label className="file-field">
@@ -62,6 +68,12 @@ export default function UploadForm({ onResult, onError }) {
           />
           <span className="file-name">{scriptFile ? scriptFile.name : '未选择文件'}</span>
         </label>
+
+        <ThresholdForm
+          values={thresholds}
+          onChange={onThresholdsChange}
+          onReset={() => onThresholdsChange({ ...DEFAULT_THRESHOLDS })}
+        />
 
         <div className="upload-actions">
           <button type="submit" className="primary" disabled={!srtFile || !scriptFile || busy}>

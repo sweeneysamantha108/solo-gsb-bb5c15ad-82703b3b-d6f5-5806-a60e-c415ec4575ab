@@ -12,6 +12,7 @@ from collections import Counter
 
 from .aligner import Op, align_tokens
 from .srt_parser import Cue, format_ms
+from .timeline_audit import audit_timeline, normalize_thresholds
 from .tokenizer import tokenize
 
 #: 两个差异片段之间若只隔着不超过该数量的相同 token，则归并为同一处问题
@@ -65,8 +66,17 @@ def _subtitle_excerpt(cues: list[Cue], cs: int, ce: int) -> str:
     return text[:160] + ('…' if len(text) > 160 else '')
 
 
-def build_comparison(cues: list[Cue], script: str) -> dict:
-    """主流程：切词 -> 对齐 -> 归并分类 -> 生成带时间码的问题清单。"""
+def build_comparison(cues: list[Cue], script: str, thresholds: dict | None = None) -> dict:
+    """主流程：切词 -> 对齐 -> 归并分类 -> 生成带时间码的问题清单。
+
+    ``thresholds`` 为时间轴审计阈值（overlap_ms / gap_ms / max_cps），
+    缺省或字段缺失时采用 :mod:`timeline_audit` 中的默认值。
+    """
+    th = normalize_thresholds(
+        thresholds.get('overlap_ms') if thresholds else None,
+        thresholds.get('gap_ms') if thresholds else None,
+        thresholds.get('max_cps') if thresholds else None,
+    )
     # ---- 1. 归一化 + 切词（字幕跨块拉平） --------------------------------
     a_tokens: list[str] = []
     a_cue: list[int] = []                 # token -> 字幕块序号
@@ -205,6 +215,9 @@ def build_comparison(cues: list[Cue], script: str) -> dict:
         else:
             script_marks.append({'s': ss, 'e': se, 'issue': iid})
 
+    # ---- 4. 时间轴质量审计（重叠 / 异常空隙 / CPS） ------------------------
+    timeline_issues = audit_timeline(cues, th)
+
     stats = {
         'cue_count': len(cues),
         'subtitle_tokens': len(a_tokens),
@@ -214,6 +227,10 @@ def build_comparison(cues: list[Cue], script: str) -> dict:
         'extra': sum(1 for i in issues if i['type'] == 'extra'),
         'misorder': sum(1 for i in issues if i['type'] == 'misorder'),
         'replace': sum(1 for i in issues if i['type'] == 'replace'),
+        'timeline_total': len(timeline_issues),
+        'overlap': sum(1 for i in timeline_issues if i['type'] == 'overlap'),
+        'gap': sum(1 for i in timeline_issues if i['type'] == 'gap'),
+        'cps': sum(1 for i in timeline_issues if i['type'] == 'cps'),
     }
 
     return {
@@ -226,5 +243,7 @@ def build_comparison(cues: list[Cue], script: str) -> dict:
         'script': script,
         'script_marks': script_marks,
         'issues': issues,
+        'timeline_issues': timeline_issues,
+        'thresholds': th,
         'stats': stats,
     }

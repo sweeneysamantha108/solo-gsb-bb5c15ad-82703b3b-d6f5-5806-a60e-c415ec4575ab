@@ -1,3 +1,5 @@
+import { TIMELINE_TYPE_LABEL } from './timeline'
+
 const TYPE_LABEL = {
   missing: '缺词',
   extra: '多词',
@@ -6,7 +8,11 @@ const TYPE_LABEL = {
 }
 
 export function typeLabel(t) {
-  return TYPE_LABEL[t] || t
+  return TYPE_LABEL[t] || TIMELINE_TYPE_LABEL[t] || t
+}
+
+export function isTimelineIssue(it) {
+  return typeof it.id === 'string' && it.id.startsWith('t')
 }
 
 function csvCell(v) {
@@ -24,19 +30,26 @@ function download(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-function rows(issues) {
-  return issues.map((it, i) => [
-    i + 1,
-    typeLabel(it.type),
-    it.timecode,
-    it.subtitle_tokens.join('') || '—',
-    it.script_tokens.join('') || '—',
-    it.subtitle_excerpt,
-    it.script_excerpt,
-  ])
-}
+const HEAD = [
+  '序号', '类别', '类型', '时间码', '实测数值',
+  '问题字幕片段', '校对稿对应片段', '字幕上下文', '校对稿上下文', '修改建议',
+]
 
-const HEAD = ['序号', '类型', '时间码', '字幕问题片段', '校对稿对应片段', '字幕上下文', '校对稿上下文']
+function rows(issues) {
+  return issues.map((it, i) => isTimelineIssue(it)
+    ? [
+        i + 1, '时间轴审计', typeLabel(it.type), it.timecode, it.value_text || '',
+        it.subtitle_excerpt || '—', '—', '—', '—', it.suggestion || '',
+      ]
+    : [
+        i + 1, '文字核校', typeLabel(it.type), it.timecode, '',
+        it.subtitle_tokens.join('') || '—',
+        it.script_tokens.join('') || '—',
+        it.subtitle_excerpt,
+        it.script_excerpt,
+        '',
+      ])
+}
 
 export function exportCSV(issues) {
   // 带 BOM，保证 Excel 打开中文不乱码
