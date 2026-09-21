@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import ThresholdForm from './ThresholdForm'
+import { compareFiles, loadSample } from '../api'
 
-export default function UploadForm({ onResult, onError }) {
+export default function UploadForm({ onResult, onError, thresholds, onThresholdsChange, onThresholdsReset }) {
   const [srtFile, setSrtFile] = useState(null)
   const [scriptFile, setScriptFile] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -11,8 +13,8 @@ export default function UploadForm({ onResult, onError }) {
     setBusy(true)
     onError(null)
     try {
-      const { compareFiles } = await import('../api')
-      onResult(await compareFiles(srtFile, scriptFile))
+      const result = await compareFiles(srtFile, scriptFile, thresholds)
+      onResult(result, { kind: 'upload', srt: srtFile, script: scriptFile })
     } catch (err) {
       onError(err.message)
     } finally {
@@ -25,8 +27,7 @@ export default function UploadForm({ onResult, onError }) {
     setBusy(true)
     onError(null)
     try {
-      const { loadSample } = await import('../api')
-      onResult(await loadSample())
+      onResult(await loadSample(thresholds), { kind: 'sample' })
     } catch (err) {
       onError(err.message)
     } finally {
@@ -40,7 +41,8 @@ export default function UploadForm({ onResult, onError }) {
         <h1>字幕核校工具</h1>
         <p className="hint">
           上传 SRT 字幕与校对稿，系统自动归一化标点与空白、跨字幕块做词序对齐，
-          识别缺词、多词、错序与错词，并生成带时间码的核校清单。
+          识别缺词、多词、错序与错词；同时审计时间轴质量（起止重叠、异常空隙、
+          阅读速度），生成带时间码的核校清单。
         </p>
 
         <label className="file-field">
@@ -62,6 +64,15 @@ export default function UploadForm({ onResult, onError }) {
           />
           <span className="file-name">{scriptFile ? scriptFile.name : '未选择文件'}</span>
         </label>
+
+        <details className="thresholds">
+          <summary>时间轴审计阈值（可选）</summary>
+          <ThresholdForm
+            value={thresholds}
+            onChange={onThresholdsChange}
+            onReset={onThresholdsReset}
+          />
+        </details>
 
         <div className="upload-actions">
           <button type="submit" className="primary" disabled={!srtFile || !scriptFile || busy}>

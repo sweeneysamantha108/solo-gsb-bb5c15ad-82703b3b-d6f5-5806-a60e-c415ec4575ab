@@ -3,10 +3,21 @@ const TYPE_LABEL = {
   extra: '多词',
   misorder: '错序',
   replace: '错词',
+  overlap: '起止重叠',
+  gap: '异常空隙',
+  cps: '阅读过快',
+  timeline: '时间轴审计',
 }
 
 export function typeLabel(t) {
   return TYPE_LABEL[t] || t
+}
+
+/** 时间轴审计问题的数值展示（重叠/空隙为毫秒，CPS 为字/秒）。 */
+export function issueValue(it) {
+  if (it.category !== 'timeline') return ''
+  if (it.type === 'cps') return it.value == null ? '∞ 字/秒' : `${it.value} 字/秒`
+  return `${it.value} ms`
 }
 
 function csvCell(v) {
@@ -25,18 +36,32 @@ function download(blob, name) {
 }
 
 function rows(issues) {
-  return issues.map((it, i) => [
-    i + 1,
-    typeLabel(it.type),
-    it.timecode,
-    it.subtitle_tokens.join('') || '—',
-    it.script_tokens.join('') || '—',
-    it.subtitle_excerpt,
-    it.script_excerpt,
-  ])
+  return issues.map((it, i) => it.category === 'timeline'
+    ? [
+      i + 1,
+      typeLabel(it.type),
+      it.timecode,
+      it.detail,
+      '—',
+      issueValue(it),
+      it.suggestion,
+      it.subtitle_excerpt,
+      '—',
+    ]
+    : [
+      i + 1,
+      typeLabel(it.type),
+      it.timecode,
+      it.subtitle_tokens.join('') || '—',
+      it.script_tokens.join('') || '—',
+      '—',
+      '—',
+      it.subtitle_excerpt,
+      it.script_excerpt,
+    ])
 }
 
-const HEAD = ['序号', '类型', '时间码', '字幕问题片段', '校对稿对应片段', '字幕上下文', '校对稿上下文']
+const HEAD = ['序号', '类型', '时间码', '字幕问题片段', '校对稿对应片段', '数值', '建议', '字幕上下文', '校对稿上下文']
 
 export function exportCSV(issues) {
   // 带 BOM，保证 Excel 打开中文不乱码

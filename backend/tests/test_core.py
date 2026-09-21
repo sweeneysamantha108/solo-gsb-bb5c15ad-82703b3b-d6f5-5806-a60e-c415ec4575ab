@@ -7,6 +7,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from app.aligner import align_tokens
 from app.analyzer import build_comparison
 from app.srt_parser import format_ms, parse_srt
+from app.timeline_audit import DEFAULT_THRESHOLDS, parse_thresholds
 from app.tokenizer import tokenize
 
 PASS = 0
@@ -94,5 +95,68 @@ res = build_comparison(parse_srt(
     '各位观众朋友晚上好。今天聊聊智能家居。当你下班回家时，灯光自动亮起。'
     '科技让生活更美好，感谢收看。')
 check('混合场景识别 多词+缺词+错词', types_of(res) == ['extra', 'missing', 'replace'])
+
+# ---- 时间轴审计：起止重叠 --------------------------------------------------
+overlap_srt = ('1\n00:00:01,000 --> 00:00:03,000\n第一句。\n\n'
+               '2\n00:00:02,800 --> 00:00:04,000\n第二句。\n')
+res = build_comparison(parse_srt(overlap_srt), '第一句。第二句。')
+tls = [i for i in res['issues'] if i['category'] == 'timeline']
+check('重叠被识别且数值正确', len(tls) == 1 and tls[0]['type'] == 'overlap' and tls[0]['value'] == 200)
+check('重叠问题带时间码与建议',
+      tls[0]['timecode'] == '00:00:02,800 --> 00:00:03,000' and bool(tls[0]['suggestion']))
+check('重叠容限可配置',
+      not any(i['category'] == 'timeline' for i in
+              build_comparison(parse_srt(overlap_srt), '第一句。第二句。',
+                               {'max_overlap_ms': 500})['issues']))
+
+# ---- 时间轴审计：块间异常空隙 ----------------------------------------------
+gap_srt = ('1\n00:00:01,000 --> 00:00:02,000\n第一句。\n\n'
+           '2\n00:00:05,500 --> 00:00:06,500\n第二句。\n')
+res = build_comparison(parse_srt(gap_srt), '第一句。第二句。')
+tls = [i for i in res['issues'] if i['category'] == 'timeline']
+check('异常空隙被识别且数值正确', len(tls) == 1 and tls[0]['type'] == 'gap' and tls[0]['value'] == 3500)
+check('空隙阈值可配置',
+      not any(i['category'] == 'timeline' for i in
+              build_comparison(parse_srt(gap_srt), '第一句。第二句。',
+                               {'max_gap_ms': 5000})['issues']))
+
+# ---- 时间轴审计：阅读速度（CPS） -------------------------------------------
+fast_srt = '1\n00:00:01,000 --> 00:00:02,000\n' + '字' * 30 + '\n'
+res = build_comparison(parse_srt(fast_srt), '字' * 30)
+cps_issue = next((i for i in res['issues'] if i['type'] == 'cps'), None)
+check('阅读过快被识别且数值正确', cps_issue is not None and cps_issue['value'] == 30.0)
+check('CPS 问题带时间码与建议',
+      cps_issue['timecode'] == '00:00:01,000 --> 00:00:02,000' and bool(cps_issue['suggestion']))
+check('CPS 阈值可配置',
+      not any(i['type'] == 'cps' for i in
+              build_comparison(parse_srt(fast_srt), '字' * 30, {'max_cps': 40})['issues']))
+
+res = build_comparison(parse_srt('1\n00:00:01,000 --> 00:00:01,000\n零时长字幕。\n'), '零时长字幕。')
+zero = next((i for i in res['issues'] if i['type'] == 'cps'), None)
+check('零时长块报 CPS 问题且数值可序列化', zero is not None and zero['value'] is None)
+
+# ---- 时间轴审计：阈值解析与统计 --------------------------------------------
+check('缺省阈值可恢复', parse_thresholds() == DEFAULT_THRESHOLDS)
+check('阈值部分覆盖', parse_thresholds(max_cps=15)['max_gap_ms'] == DEFAULT_THRESHOLDS['max_gap_ms'])
+try:
+    parse_thresholds(max_cps=0)
+    check('非法阈值被拒绝', False)
+except ValueError:
+    check('非法阈值被拒绝', True)
+try:
+    parse_thresholds(max_gap_ms=-1)
+    check('负空隙阈值被拒绝', False)
+except ValueError:
+    check('负空隙阈值被拒绝', True)
+
+res = build_comparison(parse_srt(overlap_srt), '第一句。第二句。', {'max_cps': 25})
+check('结果回显生效阈值', res['thresholds']['max_cps'] == 25.0
+      and res['thresholds']['max_gap_ms'] == DEFAULT_THRESHOLDS['max_gap_ms'])
+check('统计包含时间轴审计计数',
+      res['stats']['timeline'] == res['stats']['overlap'] + res['stats']['gap'] + res['stats']['cps'])
+ids = [i['id'] for i in res['issues']]
+check('问题 id 连续唯一', ids == list(range(1, len(ids) + 1)))
+check('时间轴问题映射到字幕块',
+      all(c in res['cue_issues'] for c in (0, 1)))
 
 print(f'\n全部 {PASS} 项断言通过')

@@ -1,10 +1,13 @@
-"""问题识别：把对齐操作流归并为 缺词 / 多词 / 错序 / 错词 四类问题。
+"""问题识别：把对齐操作流归并为 缺词 / 多词 / 错序 / 错词 四类问题，
+并合并时间轴质量审计（起止重叠 / 异常空隙 / 阅读过快）问题。
 
 关键设计：
 - 对齐在"拉平的 token 流"上进行，与字幕块边界、换行完全无关，
   因此换行差异不会引发级联误报；
 - 相邻差异之间若只隔着少量相同 token（≤ MERGE_GAP），归并为一处问题——
-  一次局部错乱只报一次，且能据此识别"错序"（同一批字词顺序不同）。
+  一次局部错乱只报一次，且能据此识别"错序"（同一批字词顺序不同）；
+- 时间轴审计只依赖字幕块时间码与文本长度，阈值可配置；
+- 两类问题合并为统一清单，按时间码排序后统一编号。
 """
 from __future__ import annotations
 
@@ -12,6 +15,7 @@ from collections import Counter
 
 from .aligner import Op, align_tokens
 from .srt_parser import Cue, format_ms
+from .timeline_audit import DEFAULT_THRESHOLDS, audit_timeline
 from .tokenizer import tokenize
 
 #: 两个差异片段之间若只隔着不超过该数量的相同 token，则归并为同一处问题
@@ -65,8 +69,13 @@ def _subtitle_excerpt(cues: list[Cue], cs: int, ce: int) -> str:
     return text[:160] + ('…' if len(text) > 160 else '')
 
 
-def build_comparison(cues: list[Cue], script: str) -> dict:
-    """主流程：切词 -> 对齐 -> 归并分类 -> 生成带时间码的问题清单。"""
+def build_comparison(cues: list[Cue], script: str, thresholds: dict | None = None) -> dict:
+    """主流程：切词 -> 对齐 -> 归并分类 -> 合并时间轴审计 -> 生成带时间码的问题清单。
+
+    thresholds 可覆盖 DEFAULT_THRESHOLDS 中的任意键（max_cps / max_gap_ms /
+    max_overlap_ms），未提供的键使用缺省值。
+    """
+    th = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
     # ---- 1. 归一化 + 切词（字幕跨块拉平） --------------------------------
     a_tokens: list[str] = []
     a_cue: list[int] = []                 # token -> 字幕块序号
@@ -130,15 +139,11 @@ def build_comparison(cues: list[Cue], script: str) -> dict:
 
     # ---- 3. 归并差异并分类 ------------------------------------------------
     issues: list[dict] = []
-    cue_marks: dict[int, list] = {}
-    cue_issues: dict[int, list] = {}
-    script_marks: list[dict] = []
 
     for del_idx, ins_idx in _iter_hunks(ops):
         del_texts = [a_tokens[i] for i in del_idx]
         ins_texts = [b_tokens[j] for j in ins_idx]
         itype = _classify(del_texts, ins_texts)
-        iid = len(issues) + 1
 
         # 时间码与字幕块定位
         if del_idx:
@@ -175,7 +180,7 @@ def build_comparison(cues: list[Cue], script: str) -> dict:
             + ('…' if se + _CTX < len(script) else '')
 
         issues.append({
-            'id': iid,
+            'category': 'diff',
             'type': itype,
             'timecode': timecode,
             'start_ms': start_ms,
@@ -188,22 +193,37 @@ def build_comparison(cues: list[Cue], script: str) -> dict:
             'script_excerpt': script_excerpt,
             'script_start': ss,
             'script_end': se,
+            '_del': del_idx,   # 临时：统一编号阶段用于生成高亮标记
+            '_ins': ins_idx,
         })
 
-        # 高亮标记
-        for i in del_idx:
-            cue_marks.setdefault(a_cue[i], []).append(
-                {'s': a_span[i][0], 'e': a_span[i][1], 'issue': iid})
-        for c in range(cs, ce + 1):
+    # ---- 4. 时间轴质量审计，合并后按时间码排序、统一编号 -------------------
+    issues += audit_timeline(cues, th)
+    issues.sort(key=lambda it: (it['start_ms'], it['end_ms'], it['category'] != 'timeline'))
+
+    cue_marks: dict[int, list] = {}
+    cue_issues: dict[int, list] = {}
+    script_marks: list[dict] = []
+
+    for iid, it in enumerate(issues, 1):
+        it['id'] = iid
+        for c in range(it['cue'], it['cue_end'] + 1):
             lst = cue_issues.setdefault(c, [])
             if iid not in lst:
                 lst.append(iid)
+        if it['category'] != 'diff':
+            continue
+        # 高亮标记
+        for i in it.pop('_del'):
+            cue_marks.setdefault(a_cue[i], []).append(
+                {'s': a_span[i][0], 'e': a_span[i][1], 'issue': iid})
+        ins_idx = it.pop('_ins')
         if ins_idx:
             for j in ins_idx:
                 script_marks.append(
                     {'s': script_toks[j].start, 'e': script_toks[j].end, 'issue': iid})
         else:
-            script_marks.append({'s': ss, 'e': se, 'issue': iid})
+            script_marks.append({'s': it['script_start'], 'e': it['script_end'], 'issue': iid})
 
     stats = {
         'cue_count': len(cues),
@@ -214,6 +234,10 @@ def build_comparison(cues: list[Cue], script: str) -> dict:
         'extra': sum(1 for i in issues if i['type'] == 'extra'),
         'misorder': sum(1 for i in issues if i['type'] == 'misorder'),
         'replace': sum(1 for i in issues if i['type'] == 'replace'),
+        'timeline': sum(1 for i in issues if i['category'] == 'timeline'),
+        'overlap': sum(1 for i in issues if i['type'] == 'overlap'),
+        'gap': sum(1 for i in issues if i['type'] == 'gap'),
+        'cps': sum(1 for i in issues if i['type'] == 'cps'),
     }
 
     return {
@@ -227,4 +251,5 @@ def build_comparison(cues: list[Cue], script: str) -> dict:
         'script_marks': script_marks,
         'issues': issues,
         'stats': stats,
+        'thresholds': th,
     }

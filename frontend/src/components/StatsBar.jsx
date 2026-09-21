@@ -6,6 +6,7 @@ const FILTERS = [
   ['extra', '多词'],
   ['misorder', '错序'],
   ['replace', '错词'],
+  ['timeline', '时间轴审计'],
 ]
 
 export default function StatsBar({ stats, filter, onFilter }) {
@@ -15,6 +16,7 @@ export default function StatsBar({ stats, filter, onFilter }) {
     extra: stats.extra,
     misorder: stats.misorder,
     replace: stats.replace,
+    timeline: stats.timeline,
   }
   return (
     <div className="stats-bar">

@@ -10,6 +10,10 @@
   --c-extra: #ff9f43;
   --c-misorder: #2dd4bf;
   --c-replace: #ff6b81;
+  --c-overlap: #e879f9;
+  --c-gap: #38bdf8;
+  --c-cps: #facc15;
+  --c-timeline: #fbbf24;
 }
 
 * { box-sizing: border-box; }
@@ -109,9 +113,70 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .chip-extra { color: var(--c-extra); }
 .chip-misorder { color: var(--c-misorder); }
 .chip-replace { color: var(--c-replace); }
+.chip-timeline { color: var(--c-timeline); }
 .chip-all { color: var(--text); }
 .chip b { color: inherit; }
 .stats-meta { margin-left: auto; color: var(--muted); font-size: 12px; }
+
+/* 时间轴审计阈值栏 */
+.audit-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.audit-title {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+.threshold-form {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.threshold-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.threshold-label { color: var(--muted); font-size: 12px; }
+.threshold-unit { color: var(--muted); font-size: 12px; }
+.threshold-field input[type='number'] {
+  width: 84px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  padding: 4px 8px;
+}
+.threshold-field input[type='number']:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.threshold-actions { display: inline-flex; gap: 8px; }
+.threshold-actions button { padding: 4px 12px; font-size: 13px; }
+
+/* 上传页阈值折叠区 */
+.thresholds {
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+}
+.thresholds summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  user-select: none;
+}
+.thresholds[open] summary { margin-bottom: 12px; }
 
 .banner-ok {
   margin: 12px 18px 0;
@@ -168,6 +233,9 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .dot-extra { background: var(--c-extra); }
 .dot-misorder { background: var(--c-misorder); }
 .dot-replace { background: var(--c-replace); }
+.dot-overlap { background: var(--c-overlap); }
+.dot-gap { background: var(--c-gap); }
+.dot-cps { background: var(--c-cps); }
 .dot.active { outline: 2px solid #fff; }
 
 /* 高亮 token */
@@ -207,12 +275,16 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .badge-extra { background: rgba(255, 159, 67, 0.22); color: #ffd8a8; }
 .badge-misorder { background: rgba(45, 212, 191, 0.2); color: #a7f3ea; }
 .badge-replace { background: rgba(255, 107, 129, 0.22); color: #ffc2cc; }
+.badge-overlap { background: rgba(232, 121, 249, 0.2); color: #f5c9fc; }
+.badge-gap { background: rgba(56, 189, 248, 0.2); color: #bae6fd; }
+.badge-cps { background: rgba(250, 204, 21, 0.18); color: #fde68a; }
 .issue-time { font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted); }
 .issue-id { margin-left: auto; color: var(--muted); font-size: 11px; }
 .issue-diff { margin: 4px 0; }
 .diff-row { display: flex; gap: 8px; align-items: baseline; line-height: 1.7; }
 .diff-tag { flex: none; font-size: 11px; color: var(--muted); }
 .diff-text { font-weight: 600; }
+.diff-text.advice { font-weight: 400; color: var(--muted); }
 .issue-ctx {
   color: var(--muted);
   font-size: 12px;

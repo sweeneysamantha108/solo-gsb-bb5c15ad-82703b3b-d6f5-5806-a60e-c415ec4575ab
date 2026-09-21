@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { typeLabel } from '../export'
 
 /** 字幕时间轴：按块展示，问题 token 高亮，点击高亮或徽标可联动定位。 */
 export default function TimelinePane({ data, issuesById, activeId, onActivate }) {
@@ -26,7 +27,7 @@ export default function TimelinePane({ data, issuesById, activeId, onActivate })
                     key={id}
                     data-issue={id}
                     className={`dot dot-${issuesById[id].type} ${activeId === id ? 'active' : ''}`}
-                    title={`#${id} ${issuesById[id].type}`}
+                    title={`#${id} ${typeLabel(issuesById[id].type)}`}
                     onClick={() => onActivate(id)}
                   />
                 ))}

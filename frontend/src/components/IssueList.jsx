@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { typeLabel } from '../export'
+import { issueValue, typeLabel } from '../export'
 
 /** 问题清单：按类型筛选，点击条目联动字幕时间轴与校对稿。 */
 export default function IssueList({ issues, activeId, onActivate }) {
@@ -35,18 +35,40 @@ export default function IssueList({ issues, activeId, onActivate }) {
             <span className="issue-time">{it.timecode}</span>
             <span className="issue-id">#{it.id}</span>
           </div>
-          <div className="issue-diff">
-            <div className="diff-row">
-              <span className="diff-tag sub">字幕</span>
-              <span className="diff-text">{it.subtitle_tokens.join('') || '（缺）'}</span>
-            </div>
-            <div className="diff-row">
-              <span className="diff-tag ref">校对稿</span>
-              <span className="diff-text">{it.script_tokens.join('') || '（无）'}</span>
-            </div>
-          </div>
-          <div className="issue-ctx">字幕：{it.subtitle_excerpt}</div>
-          <div className="issue-ctx">稿件：{it.script_excerpt}</div>
+          {it.category === 'timeline' ? (
+            <>
+              <div className="issue-diff">
+                <div className="diff-row">
+                  <span className="diff-tag sub">问题</span>
+                  <span className="diff-text">{it.detail}</span>
+                </div>
+                <div className="diff-row">
+                  <span className="diff-tag val">数值</span>
+                  <span className="diff-text">{issueValue(it)}</span>
+                </div>
+                <div className="diff-row">
+                  <span className="diff-tag ref">建议</span>
+                  <span className="diff-text advice">{it.suggestion}</span>
+                </div>
+              </div>
+              <div className="issue-ctx">字幕：{it.subtitle_excerpt}</div>
+            </>
+          ) : (
+            <>
+              <div className="issue-diff">
+                <div className="diff-row">
+                  <span className="diff-tag sub">字幕</span>
+                  <span className="diff-text">{it.subtitle_tokens.join('') || '（缺）'}</span>
+                </div>
+                <div className="diff-row">
+                  <span className="diff-tag ref">校对稿</span>
+                  <span className="diff-text">{it.script_tokens.join('') || '（无）'}</span>
+                </div>
+              </div>
+              <div className="issue-ctx">字幕：{it.subtitle_excerpt}</div>
+              <div className="issue-ctx">稿件：{it.script_excerpt}</div>
+            </>
+          )}
         </button>
       ))}
     </div>
